@@ -8,14 +8,17 @@ import fr.xephi.authme.initialization.HasCleanup;
 import fr.xephi.authme.message.MessageKey;
 import fr.xephi.authme.message.Messages;
 import fr.xephi.authme.output.ConsoleLoggerFactory;
+import fr.xephi.authme.security.crypts.HashedPassword;
 import fr.xephi.authme.service.bungeecord.BungeeSender;
 import fr.xephi.authme.settings.Settings;
 import fr.xephi.authme.settings.properties.PremiumSettings;
+import fr.xephi.authme.util.PlayerUtils;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import javax.inject.Inject;
 import java.util.Collection;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,6 +26,9 @@ import java.util.UUID;
  * Handles premium mode — allowing players with an official Minecraft account to skip authentication.
  */
 public class PremiumService implements HasCleanup {
+
+    private static final HashedPassword AUTO_REGISTERED_PREMIUM_PASSWORD =
+        new HashedPassword("!authme-premium-auto-login!");
 
     private final ConsoleLogger logger = ConsoleLoggerFactory.get(PremiumService.class);
 
@@ -51,6 +57,47 @@ public class PremiumService implements HasCleanup {
     private PendingPremiumCache pendingPremiumCache;
 
     PremiumService() {
+    }
+
+    /**
+     * Creates an AuthMe account for a Mojang-verified premium player and stores the verified
+     * premium UUID. The caller is responsible for force-logging the player in after this succeeds.
+     *
+     * @param player the verified premium player
+     * @param premiumUuid Mojang UUID proven by the login handshake or the online-mode proxy
+     * @return true if a new premium account was persisted
+     */
+    public boolean autoRegisterPremium(Player player, UUID premiumUuid) {
+        if (!settings.getProperty(PremiumSettings.ENABLE_PREMIUM)
+                || !settings.getProperty(PremiumSettings.AUTO_REGISTER_PREMIUM)) {
+            return false;
+        }
+
+        String playerName = player.getName();
+        String normalizedName = playerName.toLowerCase(Locale.ROOT);
+        if (dataSource.isAuthAvailable(normalizedName)) {
+            return false;
+        }
+
+        PlayerAuth auth = PlayerAuth.builder()
+            .name(normalizedName)
+            .realName(playerName)
+            .password(AUTO_REGISTERED_PREMIUM_PASSWORD)
+            .registrationIp(PlayerUtils.getPlayerIp(player))
+            .registrationDate(System.currentTimeMillis())
+            .uuid(player.getUniqueId())
+            .premiumUuid(premiumUuid)
+            .build();
+
+        if (!dataSource.saveAuth(auth)) {
+            logger.warning("Failed to auto-register premium player " + playerName);
+            messages.send(player, MessageKey.PREMIUM_ERROR);
+            return false;
+        }
+
+        dataSource.invalidateCache(normalizedName);
+        bungeeSender.sendPremiumSet(playerName);
+        return true;
     }
 
     /**

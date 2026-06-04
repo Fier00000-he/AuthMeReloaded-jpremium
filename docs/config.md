@@ -394,8 +394,12 @@ settings:
     #   - offline-mode + proxy: set Hooks.bungeecord=true; UUID is forwarded by proxy.
     #   - offline-mode, no proxy: PacketEvents required for cryptographic verification.
     #     Without PacketEvents, premium auto-login is disabled (fail closed).
-    # Players must use /premium to opt in.
+    # Set premiumAutoRegister=false if players must use /premium to opt in.
     enablePremium: false
+    # Automatically register verified premium players who do not have an AuthMe account yet.
+    # This gives jPremium-like behavior: legitimate Minecraft accounts can join without
+    # running /register first. Disable this to keep the legacy /premium opt-in flow only.
+    premiumAutoRegister: true
 GroupOptions:
     # Enables switching a player to defined permission groups before they log in.
     # See below for a detailed explanation.

@@ -55,7 +55,7 @@ public abstract class AbstractSqlDataSource implements DataSource {
         return columnsHandler.insert(auth,
             AuthMeColumns.NAME, AuthMeColumns.NICK_NAME, AuthMeColumns.PASSWORD, AuthMeColumns.SALT,
             AuthMeColumns.EMAIL, AuthMeColumns.REGISTRATION_DATE, AuthMeColumns.REGISTRATION_IP,
-            AuthMeColumns.UUID);
+            AuthMeColumns.UUID, AuthMeColumns.PREMIUM_UUID);
     }
 
     @Override

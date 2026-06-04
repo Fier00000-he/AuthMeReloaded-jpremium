@@ -241,6 +241,8 @@ public class AsynchronousJoin implements AsynchronousProcess {
                 bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLogin(player));
                 return;
             }
+        } else if (tryAutoRegisterPremium(player)) {
+            return;
         } else if (!service.getProperty(RegistrationSettings.FORCE) && pendingRegistration == null) {
             bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player, () -> {
                 welcomeMessageConfiguration.sendWelcomeMessage(player);
@@ -489,6 +491,59 @@ public class AsynchronousJoin implements AsynchronousProcess {
         // UUID v3 = Bukkit offline UUID: require cryptographic session verification via PacketEvents.
         UUID verifiedUuid = premiumLoginVerifier.getVerifiedUuid(name);
         return verifiedUuid != null && verifiedUuid.equals(auth.getPremiumUuid());
+    }
+
+    private boolean tryAutoRegisterPremium(Player player) {
+        if (!isPremiumAutoRegisterEnabled()) {
+            return false;
+        }
+
+        if (bungeeSender.isEnabled()) {
+            ProxySessionManager.ProxyLoginRequest proxyLoginRequest =
+                proxySessionManager.consumeLoginRequest(player.getName());
+            if (proxyLoginRequest != null && proxyLoginRequest.verifiedPremiumUuid() != null) {
+                if (!proxyLoginRequestValidator.validate(player, proxyLoginRequest.verifiedPremiumUuid())) {
+                    return false;
+                }
+                bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLoginFromProxy(player));
+                logger.info("The proxy-verified premium player " + player.getName()
+                    + " has been automatically registered and logged in");
+                return true;
+            }
+        }
+
+        UUID premiumUuid = getAutoRegistrationPremiumUuid(player);
+        if (premiumUuid == null) {
+            return false;
+        }
+
+        if (!premiumService.autoRegisterPremium(player, premiumUuid)) {
+            return false;
+        }
+
+        if (bungeeSender.isEnabled()) {
+            bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLoginFromProxy(player));
+        } else {
+            bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLogin(player));
+        }
+        logger.info("The premium player " + player.getName() + " has been automatically registered and logged in");
+        return true;
+    }
+
+    private UUID getAutoRegistrationPremiumUuid(Player player) {
+        UUID playerId = player.getUniqueId();
+        if (playerId != null && playerId.version() == 4) {
+            return playerId;
+        }
+        if (bungeeSender.isEnabled()) {
+            return null;
+        }
+        return premiumLoginVerifier.getVerifiedUuid(player.getName());
+    }
+
+    private boolean isPremiumAutoRegisterEnabled() {
+        return service.getProperty(PremiumSettings.ENABLE_PREMIUM)
+            && service.getProperty(PremiumSettings.AUTO_REGISTER_PREMIUM);
     }
 
     private int countOnlinePlayersByIp(String ip) {

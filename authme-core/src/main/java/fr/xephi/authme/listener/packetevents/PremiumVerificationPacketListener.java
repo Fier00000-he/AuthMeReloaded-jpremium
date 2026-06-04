@@ -13,8 +13,11 @@ import fr.xephi.authme.ConsoleLogger;
 import fr.xephi.authme.datasource.DataSource;
 import fr.xephi.authme.output.ConsoleLoggerFactory;
 import fr.xephi.authme.service.BukkitService;
+import fr.xephi.authme.service.MojangApiService;
 import fr.xephi.authme.service.PendingPremiumCache;
 import fr.xephi.authme.service.PremiumLoginVerifier;
+import fr.xephi.authme.settings.Settings;
+import fr.xephi.authme.settings.properties.PremiumSettings;
 import io.netty.channel.ChannelPipeline;
 
 import javax.crypto.Cipher;
@@ -52,13 +55,18 @@ public class PremiumVerificationPacketListener extends PacketListenerAbstract {
     private final PremiumLoginVerifier loginVerifier;
     private final PendingPremiumCache pendingPremiumCache;
     private final BukkitService bukkitService;
+    private final Settings settings;
+    private final MojangApiService mojangApiService;
 
     public PremiumVerificationPacketListener(DataSource dataSource, PremiumLoginVerifier loginVerifier,
-                                             PendingPremiumCache pendingPremiumCache, BukkitService bukkitService) {
+                                             PendingPremiumCache pendingPremiumCache, BukkitService bukkitService,
+                                             Settings settings, MojangApiService mojangApiService) {
         this.dataSource = dataSource;
         this.loginVerifier = loginVerifier;
         this.pendingPremiumCache = pendingPremiumCache;
         this.bukkitService = bukkitService;
+        this.settings = settings;
+        this.mojangApiService = mojangApiService;
     }
 
     @Override
@@ -94,8 +102,9 @@ public class PremiumVerificationPacketListener extends PacketListenerAbstract {
 
             boolean isPremium = auth != null && auth.isPremium();
             boolean isPending = !isPremium && pendingPremiumCache.isPending(username);
+            boolean shouldAutoRegisterPremium = auth == null && shouldVerifyForAutoRegistration(username);
 
-            if (isPremium || isPending) {
+            if (isPremium || isPending || shouldAutoRegisterPremium) {
                 byte[] verifyToken = loginVerifier.startVerification(connectionKey, username, playerUUID);
                 WrapperLoginServerEncryptionRequest encReq = new WrapperLoginServerEncryptionRequest(
                     "", loginVerifier.getPublicKey(), verifyToken, true);
@@ -105,6 +114,11 @@ public class PremiumVerificationPacketListener extends PacketListenerAbstract {
                 resumeLogin(user, username, clientVersion, playerUUID);
             }
         });
+    }
+
+    private boolean shouldVerifyForAutoRegistration(String username) {
+        return settings.getProperty(PremiumSettings.AUTO_REGISTER_PREMIUM)
+            && mojangApiService.fetchUuidByName(username).isPresent();
     }
 
     private void handleEncryptionResponse(PacketReceiveEvent event) {

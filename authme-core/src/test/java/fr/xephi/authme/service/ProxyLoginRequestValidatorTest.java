@@ -74,6 +74,17 @@ class ProxyLoginRequestValidatorTest {
     }
 
     @Test
+    void shouldAutoRegisterMissingAuthForProxyVerifiedPremiumUuid() {
+        UUID premiumUuid = UUID.randomUUID();
+        given(player.getName()).willReturn("Bobby");
+        given(premiumService.autoRegisterPremium(player, premiumUuid)).willReturn(true);
+
+        assertTrue(validator.validate(player, premiumUuid));
+        verify(premiumService).autoRegisterPremium(player, premiumUuid);
+        verify(premiumService, never()).finalizePendingPremium(player, premiumUuid);
+    }
+
+    @Test
     void shouldFinalizeMatchingPendingPremiumUuid() {
         UUID pendingUuid = UUID.randomUUID();
         PlayerAuth auth = PlayerAuth.builder().name("bobby").build();

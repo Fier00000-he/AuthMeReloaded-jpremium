@@ -17,9 +17,10 @@ import java.util.UUID;
 /**
  * Validates premium data attached to proxy-initiated auto-login requests.
  *
- * <p>The backend only accepts a proxy-supplied Mojang UUID if it matches either the stored premium
- * UUID for the account or a currently pending premium enrollment being finalized. Any mismatch is
- * treated as an invalid premium claim and the auto-login request is rejected.</p>
+ * <p>The backend accepts a proxy-supplied Mojang UUID if it matches the stored premium UUID,
+ * finalizes a pending premium enrollment, or creates a new premium account through
+ * {@code settings.premiumAutoRegister}. Any mismatch is treated as an invalid premium claim and
+ * the auto-login request is rejected.</p>
  */
 public class ProxyLoginRequestValidator {
 
@@ -65,6 +66,9 @@ public class ProxyLoginRequestValidator {
             auth = dataSource.getAuth(playerName.toLowerCase(Locale.ROOT));
         }
         if (auth == null) {
+            if (premiumService.autoRegisterPremium(player, verifiedPremiumUuid)) {
+                return true;
+            }
             logger.warning("Rejected proxy premium login for " + playerName + ": no auth record found");
             return false;
         }

@@ -8,8 +8,10 @@ import fr.xephi.authme.datasource.DataSource;
 import fr.xephi.authme.listener.packetevents.PacketEventsListenerRegistry;
 import fr.xephi.authme.service.BukkitService;
 import fr.xephi.authme.service.CancellableTask;
+import fr.xephi.authme.service.MojangApiService;
 import fr.xephi.authme.service.PendingPremiumCache;
 import fr.xephi.authme.service.PremiumLoginVerifier;
+import fr.xephi.authme.settings.Settings;
 import fr.xephi.authme.util.Utils;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -138,9 +140,11 @@ public abstract class AbstractSpigotPlatformAdapter implements PlatformAdapter {
 
     @Override
     public void registerPremiumVerification(DataSource dataSource, PremiumLoginVerifier verifier,
-                                            PendingPremiumCache pendingPremiumCache, BukkitService bukkitService) {
+                                            PendingPremiumCache pendingPremiumCache, BukkitService bukkitService,
+                                            Settings settings, MojangApiService mojangApiService) {
         getOrCreatePacketInterceptionAdapter()
-            .registerPremiumVerification(dataSource, verifier, pendingPremiumCache, bukkitService);
+            .registerPremiumVerification(dataSource, verifier, pendingPremiumCache, bukkitService,
+                settings, mojangApiService);
     }
 
     @Override

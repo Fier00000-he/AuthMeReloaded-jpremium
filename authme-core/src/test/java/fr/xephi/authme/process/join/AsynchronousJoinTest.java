@@ -293,6 +293,93 @@ public class AsynchronousJoinTest {
     }
 
     @Test
+    public void shouldAutoRegisterVerifiedPremiumPlayerWithoutCreatingLimbo() {
+        // given
+        Player player = mockPlayer("Bobby");
+        setUpUnregisteredJoin(player);
+        UUID offlineUuid = UUID.fromString("f0647d73-8421-3979-bdb6-6b88dc3d03d4");
+        UUID premiumUuid = UUID.fromString("0f7a29cf-2f0b-4f76-a855-2c58f8f11f07");
+        given(player.getUniqueId()).willReturn(offlineUuid);
+        given(service.getProperty(PremiumSettings.ENABLE_PREMIUM)).willReturn(true);
+        given(service.getProperty(PremiumSettings.AUTO_REGISTER_PREMIUM)).willReturn(true);
+        given(premiumLoginVerifier.getVerifiedUuid("Bobby")).willReturn(premiumUuid);
+        given(premiumService.autoRegisterPremium(player, premiumUuid)).willReturn(true);
+
+        // when
+        asynchronousJoin.processJoin(player);
+
+        // then
+        verify(premiumService).autoRegisterPremium(player, premiumUuid);
+        verify(asynchronousLogin).forceLogin(player);
+        verify(limboService, never()).createLimboPlayer(eq(player), eq(false));
+        verify(welcomeMessageConfiguration, never()).sendWelcomeMessage(player);
+    }
+
+    @Test
+    public void shouldAutoRegisterOnlineModePremiumPlayerByMojangUuid() {
+        // given
+        Player player = mockPlayer("Bobby");
+        setUpUnregisteredJoin(player);
+        UUID premiumUuid = UUID.fromString("0f7a29cf-2f0b-4f76-a855-2c58f8f11f07");
+        given(player.getUniqueId()).willReturn(premiumUuid);
+        given(service.getProperty(PremiumSettings.ENABLE_PREMIUM)).willReturn(true);
+        given(service.getProperty(PremiumSettings.AUTO_REGISTER_PREMIUM)).willReturn(true);
+        given(premiumService.autoRegisterPremium(player, premiumUuid)).willReturn(true);
+
+        // when
+        asynchronousJoin.processJoin(player);
+
+        // then
+        verify(premiumService).autoRegisterPremium(player, premiumUuid);
+        verify(premiumLoginVerifier, never()).getVerifiedUuid(any());
+        verify(asynchronousLogin).forceLogin(player);
+        verify(limboService, never()).createLimboPlayer(eq(player), eq(false));
+    }
+
+    @Test
+    public void shouldAutoRegisterProxyVerifiedPremiumPlayerWithoutCreatingLimbo() {
+        // given
+        Player player = mockPlayer("Bobby");
+        setUpUnregisteredJoin(player);
+        UUID premiumUuid = UUID.fromString("0f7a29cf-2f0b-4f76-a855-2c58f8f11f07");
+        given(service.getProperty(PremiumSettings.ENABLE_PREMIUM)).willReturn(true);
+        given(service.getProperty(PremiumSettings.AUTO_REGISTER_PREMIUM)).willReturn(true);
+        given(bungeeSender.isEnabled()).willReturn(true);
+        given(proxySessionManager.consumeLoginRequest("Bobby"))
+            .willReturn(new ProxySessionManager.ProxyLoginRequest("bobby", premiumUuid));
+        given(proxyLoginRequestValidator.validate(player, premiumUuid)).willReturn(true);
+
+        // when
+        asynchronousJoin.processJoin(player);
+
+        // then
+        verify(proxyLoginRequestValidator).validate(player, premiumUuid);
+        verify(asynchronousLogin).forceLoginFromProxy(player);
+        verify(asynchronousLogin, never()).forceLogin(player);
+        verify(limboService, never()).createLimboPlayer(eq(player), eq(false));
+    }
+
+    @Test
+    public void shouldUseNormalRegistrationForUnverifiedPremiumPlayer() {
+        // given
+        Player player = mockPlayer("Bobby");
+        setUpUnregisteredJoin(player);
+        UUID offlineUuid = UUID.fromString("f0647d73-8421-3979-bdb6-6b88dc3d03d4");
+        given(player.getUniqueId()).willReturn(offlineUuid);
+        given(service.getProperty(PremiumSettings.ENABLE_PREMIUM)).willReturn(true);
+        given(service.getProperty(PremiumSettings.AUTO_REGISTER_PREMIUM)).willReturn(true);
+        given(premiumLoginVerifier.getVerifiedUuid("Bobby")).willReturn(null);
+
+        // when
+        asynchronousJoin.processJoin(player);
+
+        // then
+        verify(premiumService, never()).autoRegisterPremium(eq(player), any());
+        verify(asynchronousLogin, never()).forceLogin(player);
+        verify(limboService).createLimboPlayer(player, false);
+    }
+
+    @Test
     public void shouldForceLoginPlayerApprovedViaPreJoinDialog() {
         // given
         Player player = mockPlayer("Bobby");
@@ -343,6 +430,21 @@ public class AsynchronousJoinTest {
         given(sessionService.canResumeSession(player)).willReturn(false);
         given(proxySessionManager.shouldResumeSession(normalizedName)).willReturn(false);
         given(service.getProperty(RestrictionSettings.LOGIN_TIMEOUT)).willReturn(30);
+        given(service.getProperty(RegistrationSettings.USE_DIALOG_UI)).willReturn(false);
+        given(pluginHookService.isEssentialsAvailable()).willReturn(false);
+        given(service.getProperty(RegistrationSettings.APPLY_BLIND_EFFECT)).willReturn(false);
+    }
+
+    private void setUpUnregisteredJoin(Player player) {
+        String normalizedName = player.getName().toLowerCase();
+        given(validationService.fulfillsNameRestrictions(player)).willReturn(true);
+        given(service.getProperty(RestrictionSettings.UNRESTRICTED_NAMES)).willReturn(Set.of());
+        given(service.getProperty(RestrictionSettings.FORCE_SURVIVAL_MODE)).willReturn(false);
+        given(service.getProperty(HooksSettings.DISABLE_SOCIAL_SPY)).willReturn(false);
+        given(service.getProperty(RestrictionSettings.MAX_JOIN_PER_IP)).willReturn(0);
+        given(database.isAuthAvailable(normalizedName)).willReturn(false);
+        given(service.getProperty(RegistrationSettings.FORCE)).willReturn(true);
+        given(service.getProperty(RestrictionSettings.REGISTER_TIMEOUT)).willReturn(30);
         given(service.getProperty(RegistrationSettings.USE_DIALOG_UI)).willReturn(false);
         given(pluginHookService.isEssentialsAvailable()).willReturn(false);
         given(service.getProperty(RegistrationSettings.APPLY_BLIND_EFFECT)).willReturn(false);

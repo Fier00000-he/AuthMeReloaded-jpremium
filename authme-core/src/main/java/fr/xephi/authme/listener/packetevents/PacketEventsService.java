@@ -8,6 +8,7 @@ import fr.xephi.authme.initialization.SettingsDependent;
 import fr.xephi.authme.output.ConsoleLoggerFactory;
 import fr.xephi.authme.platform.PacketInterceptionAdapter;
 import fr.xephi.authme.service.BukkitService;
+import fr.xephi.authme.service.MojangApiService;
 import fr.xephi.authme.service.PendingPremiumCache;
 import fr.xephi.authme.service.PremiumLoginVerifier;
 import fr.xephi.authme.settings.Settings;
@@ -38,17 +39,22 @@ public class PacketEventsService implements SettingsDependent {
     private final PacketInterceptionAdapter packetInterceptionAdapter;
     private final PremiumLoginVerifier premiumLoginVerifier;
     private final PendingPremiumCache pendingPremiumCache;
+    private final Settings settings;
+    private final MojangApiService mojangApiService;
 
     @Inject
     PacketEventsService(Settings settings, BukkitService bukkitService, PlayerCache playerCache,
                         DataSource dataSource, PacketInterceptionAdapter packetInterceptionAdapter,
-                        PremiumLoginVerifier premiumLoginVerifier, PendingPremiumCache pendingPremiumCache) {
+                        PremiumLoginVerifier premiumLoginVerifier, PendingPremiumCache pendingPremiumCache,
+                        MojangApiService mojangApiService) {
+        this.settings = settings;
         this.bukkitService = bukkitService;
         this.playerCache = playerCache;
         this.dataSource = dataSource;
         this.packetInterceptionAdapter = packetInterceptionAdapter;
         this.premiumLoginVerifier = premiumLoginVerifier;
         this.pendingPremiumCache = pendingPremiumCache;
+        this.mojangApiService = mojangApiService;
         reload(settings);
     }
 
@@ -106,7 +112,7 @@ public class PacketEventsService implements SettingsDependent {
         if (needsPremiumPacketVerification) {
             if (!premiumVerificationRegistered) {
                 packetInterceptionAdapter.registerPremiumVerification(dataSource, premiumLoginVerifier,
-                    pendingPremiumCache, bukkitService);
+                    pendingPremiumCache, bukkitService, settings, mojangApiService);
                 premiumVerificationRegistered = true;
             }
         } else if (premiumVerificationRegistered) {

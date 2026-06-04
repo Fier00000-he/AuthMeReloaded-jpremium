@@ -3,8 +3,10 @@ package fr.xephi.authme.platform;
 import fr.xephi.authme.data.auth.PlayerCache;
 import fr.xephi.authme.datasource.DataSource;
 import fr.xephi.authme.service.BukkitService;
+import fr.xephi.authme.service.MojangApiService;
 import fr.xephi.authme.service.PendingPremiumCache;
 import fr.xephi.authme.service.PremiumLoginVerifier;
+import fr.xephi.authme.settings.Settings;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -125,7 +127,8 @@ class AbstractSpigotPlatformAdapterTest {
 
         @Override
         public void registerPremiumVerification(DataSource dataSource, PremiumLoginVerifier verifier,
-                                                PendingPremiumCache pendingPremiumCache, BukkitService bukkitService) {
+                                                PendingPremiumCache pendingPremiumCache, BukkitService bukkitService,
+                                                Settings settings, MojangApiService mojangApiService) {
         }
 
         @Override

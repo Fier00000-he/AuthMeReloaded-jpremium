@@ -1,9 +1,10 @@
 # Premium bypass
 
 AuthMe can let players with a legitimate Mojang account skip password authentication entirely.
-When a premium-enrolled player connects, AuthMe independently verifies their identity by
-running a cryptographic handshake with Mojang's session server — no password prompt, no
-dialog box.
+When a verified premium player connects, AuthMe independently verifies their identity by
+running a cryptographic handshake with Mojang's session server. With
+`settings.premiumAutoRegister: true`, new premium players are registered automatically and
+join without a password prompt or dialog box.
 
 ## Requirements
 
@@ -37,6 +38,7 @@ and falls back to normal password authentication.
 ```yaml
 settings:
   enablePremium: true
+  premiumAutoRegister: true
 
 Hooks:
   # Required only when using AuthMe behind Velocity/Bungee
@@ -50,9 +52,28 @@ premium:
   keepOfflineUuidCompatibility: false
 ```
 
-### 3. Enroll players
+### 3. Choose enrollment mode
 
-Players must opt in individually after the admin enables premium mode.
+By default this fork uses jPremium-like auto-registration:
+
+```yaml
+settings:
+  enablePremium: true
+  premiumAutoRegister: true
+```
+
+When a connecting username exists as a Mojang account, AuthMe verifies the login session.
+If verification succeeds and no AuthMe account exists yet, AuthMe creates a premium account
+with the verified Mojang UUID and logs the player in immediately.
+
+To keep the original AuthMe opt-in behavior, disable auto-registration:
+
+```yaml
+settings:
+  premiumAutoRegister: false
+```
+
+Then players must opt in individually after the admin enables premium mode.
 
 **Player commands:**
 ```text
@@ -72,14 +93,15 @@ From the next login onward the player bypasses the password prompt.
 
 ## How it works
 
-When a premium-enrolled player connects, AuthMe intercepts the Minecraft login handshake at
-the packet level:
+When a premium player connects directly to an offline-mode backend, AuthMe intercepts the
+Minecraft login handshake at the packet level:
 
 ```
 Client                         Server (AuthMe + PacketEvents)        Mojang
   |                                  |                                 |
   |--LOGIN_START(name)-------------->|                                 |
-  |                                  | ① DB: isPremium → true (async)  |
+  |                                  | ① DB: isPremium or              |
+  |                                  |    Mojang profile exists        |
   |<--ENCRYPTION_REQUEST-------------|                                 |
   |  (RSA-1024 public key +          |                                 |
   |   random verify token)           |                                 |
@@ -99,7 +121,8 @@ Client                         Server (AuthMe + PacketEvents)        Mojang
   |                                  | ⑥ Re-inject LOGIN_START         |
   |     ... player joins PLAY ...    |                                 |
   |                                  |                                 |
-  AsynchronousJoin: getVerifiedUuid(name) == auth.getPremiumUuid() → auto-login
+  AsynchronousJoin: verified UUID matches stored premium UUID, pending enrollment,
+                    or a missing account is auto-registered → auto-login
 ```
 
 **The cryptographic guarantee:** the server generates a fresh RSA key pair at startup and a
@@ -110,6 +133,9 @@ the shared AES key. An attacker who knows only the player's name cannot forge th
 **Pre-join dialogs (Paper/Folia):** if `settings.registration.dialog.preJoin.enable` is also
 enabled, the pre-join dialog is skipped entirely for verified premium players — no blocking
 UI shown, no password field displayed.
+
+**Cracked players:** if the Mojang profile lookup says the username is not premium, the
+connection resumes the normal AuthMe registration/login flow.
 
 ---
 
@@ -153,9 +179,15 @@ Hooks:
 1. the `perform.login` message must have a valid HMAC using `Hooks.proxySharedSecret`
 2. the optional Mojang UUID inside that message must match either:
    - the player's stored premium UUID, or
-   - the pending premium enrollment being finalized
+   - the pending premium enrollment being finalized, or
+   - a missing AuthMe account when `settings.premiumAutoRegister: true`
 
 If either check fails, the premium auto-login request is rejected.
+
+For jPremium-like auto-registration behind a proxy, the proxy must actually verify the new
+premium player first and forward the Mojang UUID to the backend. Plain online-mode proxy
+forwarding does this through the forwarded UUID; AuthMe proxy plugin deployments should use
+the signed `perform.login` flow.
 
 **Premium cache synchronization:**
 
@@ -202,8 +234,12 @@ settings:
   #   - plain online-mode proxy forwarding also forwards the Mojang UUID, but
   #     without the AuthMe proxy plugin's signed premium flow.
   # If verification is unavailable, premium auto-login is disabled (fail closed).
-  # Players must use /premium to opt in.
+  # Existing premium accounts can still use /premium to opt in manually.
   enablePremium: false
+  # Automatically register verified premium players who do not have an AuthMe account yet.
+  # This gives jPremium-like behavior: legitimate Minecraft accounts can join without
+  # running /register first. Disable this to keep the legacy /premium opt-in flow only.
+  premiumAutoRegister: true
 ```
 
 ---
