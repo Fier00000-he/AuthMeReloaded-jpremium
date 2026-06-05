@@ -63,6 +63,7 @@ final class VelocityProxyBridge {
     private static final String PREMIUM_PENDING_SET_MESSAGE = "premium.pending.set";
     private static final String PROXY_IDENTITY = "velocity";
     private static final int MAX_RETRIES = 3;
+    private static final long RETRY_DELAY_MILLIS = 200L;
 
     private final ProxyServer proxyServer;
     private final Logger logger;
@@ -569,7 +570,7 @@ final class VelocityProxyBridge {
             serverOpt.get().sendPluginMessage(AUTHME_CHANNEL,
                 createPerformLoginMessage(normalizedName, verifiedPremiumUuid));
             scheduleRetry(normalizedName);
-        }, 1, TimeUnit.SECONDS);
+        }, RETRY_DELAY_MILLIS, TimeUnit.MILLISECONDS);
     }
 
     private ParsedMessage parseMessage(byte[] data) {

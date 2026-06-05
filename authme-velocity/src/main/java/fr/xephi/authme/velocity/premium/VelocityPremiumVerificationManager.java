@@ -6,10 +6,12 @@ import com.velocitypowered.api.util.UuidUtils;
 import org.slf4j.Logger;
 
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 public final class VelocityPremiumVerificationManager {
@@ -19,7 +21,7 @@ public final class VelocityPremiumVerificationManager {
     private final Predicate<String> isPendingVerification;
     private final BooleanSupplier keepOfflineUuidCompatibility;
     private final BooleanSupplier verifyUnknownPremiumPlayers;
-    private final Predicate<String> hasMojangProfile;
+    private final Function<String, Optional<UUID>> mojangProfileLookup;
     private final Set<String> onlineModeNames = ConcurrentHashMap.newKeySet();
     private final ProxyPremiumLoginVerifier loginVerifier;
     private boolean registered;
@@ -38,13 +40,13 @@ public final class VelocityPremiumVerificationManager {
                                        Predicate<String> isPendingVerification,
                                        BooleanSupplier keepOfflineUuidCompatibility,
                                        BooleanSupplier verifyUnknownPremiumPlayers,
-                                       Predicate<String> hasMojangProfile) {
+                                       Function<String, Optional<UUID>> mojangProfileLookup) {
         this.logger = logger;
         this.requiresVerification = requiresVerification;
         this.isPendingVerification = isPendingVerification;
         this.keepOfflineUuidCompatibility = keepOfflineUuidCompatibility;
         this.verifyUnknownPremiumPlayers = verifyUnknownPremiumPlayers;
-        this.hasMojangProfile = hasMojangProfile;
+        this.mojangProfileLookup = mojangProfileLookup;
         this.loginVerifier = new ProxyPremiumLoginVerifier("authme-velocity-premium",
             message -> this.logger.warn(message));
     }
@@ -59,7 +61,7 @@ public final class VelocityPremiumVerificationManager {
 
     public void onPreLogin(PreLoginEvent event) {
         String normalizedName = normalize(event.getUsername());
-        if (shouldForceOnlineMode(normalizedName)) {
+        if (shouldForceOnlineMode(normalizedName, event.getUniqueId())) {
             onlineModeNames.add(normalizedName);
             event.setResult(PreLoginEvent.PreLoginComponentResult.forceOnlineMode());
         } else {
@@ -87,11 +89,25 @@ public final class VelocityPremiumVerificationManager {
         }
     }
 
-    private boolean shouldForceOnlineMode(String normalizedName) {
+    private boolean shouldForceOnlineMode(String normalizedName, UUID claimedUuid) {
         if (requiresVerification.test(normalizedName)) {
             return true;
         }
-        return verifyUnknownPremiumPlayers.getAsBoolean() && hasMojangProfile.test(normalizedName);
+        if (!verifyUnknownPremiumPlayers.getAsBoolean() || claimedUuid == null) {
+            return false;
+        }
+
+        Optional<UUID> mojangUuid = mojangProfileLookup.apply(normalizedName);
+        if (mojangUuid.isEmpty()) {
+            return false;
+        }
+
+        boolean matchesClaimedUuid = mojangUuid.get().equals(claimedUuid);
+        if (!matchesClaimedUuid) {
+            logger.debug("Allowing '{}' to continue in offline-mode: client UUID {} does not match Mojang UUID {}",
+                normalizedName, claimedUuid, mojangUuid.get());
+        }
+        return matchesClaimedUuid;
     }
 
     public UUID getVerifiedPremiumUuid(String normalizedName) {

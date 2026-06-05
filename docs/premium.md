@@ -190,10 +190,10 @@ forwarding does this through the forwarded UUID; AuthMe proxy plugin deployments
 the signed `perform.login` flow.
 
 On Velocity, keep `premium.verifyUnknownPlayers: true` if new unregistered premium players
-should be detected automatically. The proxy checks unknown names against Mojang; names that
-exist are forced through Velocity online-mode and then sent to the backend with the verified
-Mojang UUID. Cracked players using a real premium name fail Mojang authentication instead of
-being allowed to register that name.
+should be detected automatically. The proxy checks unknown names against Mojang and only forces
+Velocity online-mode when the client's login UUID matches the Mojang UUID for that name. Verified
+premium players are then sent to the backend with the Mojang UUID; players without a matching
+premium UUID continue through the normal AuthMe password or registration flow.
 
 **Premium cache synchronization:**
 

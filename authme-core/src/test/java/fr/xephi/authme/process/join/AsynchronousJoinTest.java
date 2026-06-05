@@ -360,6 +360,68 @@ public class AsynchronousJoinTest {
     }
 
     @Test
+    public void shouldWaitForDelayedProxyPremiumAutoRegisterBeforeCreatingLimbo() {
+        // given
+        Player player = mockPlayer("Bobby");
+        setUpUnregisteredJoin(player);
+        UUID premiumUuid = UUID.fromString("0f7a29cf-2f0b-4f76-a855-2c58f8f11f07");
+        given(service.getProperty(PremiumSettings.ENABLE_PREMIUM)).willReturn(true);
+        given(service.getProperty(PremiumSettings.AUTO_REGISTER_PREMIUM)).willReturn(true);
+        given(bungeeSender.isEnabled()).willReturn(true);
+        given(proxySessionManager.consumeLoginRequest("Bobby"))
+            .willReturn(null, new ProxySessionManager.ProxyLoginRequest("bobby", premiumUuid));
+        given(proxyLoginRequestValidator.validate(player, premiumUuid)).willReturn(true);
+
+        AtomicReference<Runnable> delayedTask = new AtomicReference<>();
+        doAnswer(invocation -> {
+            delayedTask.set(invocation.getArgument(1));
+            return mock(fr.xephi.authme.service.CancellableTask.class);
+        }).when(bukkitService).runTaskLater(eq(player), any(Runnable.class), eq(5L));
+
+        // when
+        asynchronousJoin.processJoin(player);
+
+        // then
+        verify(limboService, never()).createLimboPlayer(eq(player), eq(false));
+
+        delayedTask.get().run();
+        verify(proxyLoginRequestValidator).validate(player, premiumUuid);
+        verify(asynchronousLogin).forceLoginFromProxy(player);
+        verify(limboService, never()).createLimboPlayer(eq(player), eq(false));
+    }
+
+    @Test
+    public void shouldFallBackToNormalRegistrationAfterProxyPremiumWaitExpires() {
+        // given
+        Player player = mockPlayer("Bobby");
+        setUpUnregisteredJoin(player);
+        UUID offlineUuid = UUID.fromString("f0647d73-8421-3979-bdb6-6b88dc3d03d4");
+        given(player.getUniqueId()).willReturn(offlineUuid);
+        given(service.getProperty(PremiumSettings.ENABLE_PREMIUM)).willReturn(true);
+        given(service.getProperty(PremiumSettings.AUTO_REGISTER_PREMIUM)).willReturn(true);
+        given(bungeeSender.isEnabled()).willReturn(true);
+        given(proxySessionManager.consumeLoginRequest("Bobby")).willReturn(null);
+        given(premiumLoginVerifier.getVerifiedUuid("Bobby")).willReturn(null);
+
+        AtomicReference<Runnable> delayedTask = new AtomicReference<>();
+        doAnswer(invocation -> {
+            delayedTask.set(invocation.getArgument(1));
+            return mock(fr.xephi.authme.service.CancellableTask.class);
+        }).when(bukkitService).runTaskLater(eq(player), any(Runnable.class), eq(5L));
+
+        // when
+        asynchronousJoin.processJoin(player);
+
+        // then
+        verify(limboService, never()).createLimboPlayer(eq(player), eq(false));
+
+        delayedTask.get().run();
+        verify(premiumService, never()).autoRegisterPremium(eq(player), any());
+        verify(asynchronousLogin, never()).forceLogin(player);
+        verify(limboService).createLimboPlayer(player, false);
+    }
+
+    @Test
     public void shouldUseNormalRegistrationForUnverifiedPremiumPlayer() {
         // given
         Player player = mockPlayer("Bobby");

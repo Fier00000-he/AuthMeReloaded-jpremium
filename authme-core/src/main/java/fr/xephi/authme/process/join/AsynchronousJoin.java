@@ -62,6 +62,7 @@ import static fr.xephi.authme.settings.properties.RestrictionSettings.PROTECT_IN
 public class AsynchronousJoin implements AsynchronousProcess {
     
     private final ConsoleLogger logger = ConsoleLoggerFactory.get(AsynchronousJoin.class);
+    private static final long PROXY_PREMIUM_LOGIN_WAIT_TICKS = 5L;
 
     @Inject
     private Server server;
@@ -153,13 +154,7 @@ public class AsynchronousJoin implements AsynchronousProcess {
         String name = player.getName().toLowerCase(Locale.ROOT);
         String ip = PlayerUtils.getPlayerIp(player);
         UUID playerId = player.getUniqueId();
-        String pendingLoginPassword = preJoinDialogService.consumePendingLoginPassword(playerId);
-        String pendingRecoveryEmail = preJoinDialogService.consumePendingRecoveryEmail(playerId);
-        PreJoinDialogService.PendingRegistration pendingRegistration =
-            preJoinDialogService.consumePendingRegistration(playerId);
-        boolean shouldSkipPostJoinDialog = preJoinDialogService.consumeSkipPostJoinDialog(playerId);
-        boolean pendingForceLogin = preJoinDialogService.consumePendingForceLogin(playerId);
-        String pendingKick = preJoinDialogService.consumePendingKickMessage(playerId);
+        JoinContext context = consumeJoinContext(playerId);
         // pendingKick is applied below, after proxy/premium/session checks, which take priority:
         // a Velocity perform.login arriving just after the player cancelled the pre-join dialog
         // must win over the dialog cancel kick.
@@ -211,54 +206,134 @@ public class AsynchronousJoin implements AsynchronousProcess {
                     bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLogin(player));
                 }
                 return;
-            } else {
-                ProxySessionManager.ProxyLoginRequest proxyLoginRequest = proxySessionManager.consumeLoginRequest(name);
-                if (proxyLoginRequest != null) {
-                    if (!proxyLoginRequestValidator.validate(player, proxyLoginRequest.verifiedPremiumUuid())) {
-                        return;
-                    }
-                    if (playerCache.isAuthenticated(name)) {
-                        return;
-                    }
-                    service.send(player, MessageKey.SESSION_RECONNECTION);
-                    // Run commands
-                    bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player,
-                        () -> commandManager.runCommandsOnSessionLogin(player));
-                    // Use forceLoginFromProxy (quiet=true, no BungeeCord redirect) so that if
-                    // BungeeReceiver.performLogin() concurrently already completed the login, this
-                    // call is a no-op rather than sending an "already logged in" error.
-                    bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLoginFromProxy(player));
-                    logger.info("The user " + player.getName() + " has been automatically logged in, "
-                        + "as present in autologin queue.");
-                    return;
-                }
+            } else if (processQueuedProxyLogin(player, name)) {
+                return;
+            } else if (shouldWaitForProxyPremiumLogin(player, true)) {
+                waitForProxyPremiumLogin(player, true, context);
+                return;
             }
             if (sessionService.canResumeSession(player)) {
-                service.send(player, MessageKey.SESSION_RECONNECTION);
-                // Run commands
-                bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player,
-                    () -> commandManager.runCommandsOnSessionLogin(player));
-                bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLogin(player));
+                resumeSession(player);
                 return;
             }
         } else if (tryAutoRegisterPremium(player)) {
             return;
-        } else if (!service.getProperty(RegistrationSettings.FORCE) && pendingRegistration == null) {
-            bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player, () -> {
-                welcomeMessageConfiguration.sendWelcomeMessage(player);
-            });
-
-            // Skip if registration is optional
-
-            if (bungeeSender.isEnabled()) {
-                // As described at https://www.spigotmc.org/wiki/bukkit-bungee-plugin-messaging-channel/
-                // "Keep in mind that you can't send plugin messages directly after a player joins."
-                bukkitService.scheduleSyncDelayedTask(player, () ->
-                    bungeeSender.sendAuthMeBungeecordMessage(player, MessageType.LOGIN), 5L);
-            }
+        } else if (shouldWaitForProxyPremiumLogin(player, false)) {
+            waitForProxyPremiumLogin(player, false, context);
+            return;
+        } else if (allowOptionalRegistration(player, context)) {
             return;
         }
 
+        continueRegularJoin(player, isAuthAvailable, context);
+    }
+
+    private JoinContext consumeJoinContext(UUID playerId) {
+        return new JoinContext(
+            preJoinDialogService.consumePendingLoginPassword(playerId),
+            preJoinDialogService.consumePendingRecoveryEmail(playerId),
+            preJoinDialogService.consumePendingRegistration(playerId),
+            preJoinDialogService.consumeSkipPostJoinDialog(playerId),
+            preJoinDialogService.consumePendingForceLogin(playerId),
+            preJoinDialogService.consumePendingKickMessage(playerId));
+    }
+
+    private boolean processQueuedProxyLogin(Player player, String normalizedName) {
+        ProxySessionManager.ProxyLoginRequest proxyLoginRequest =
+            proxySessionManager.consumeLoginRequest(normalizedName);
+        if (proxyLoginRequest == null) {
+            return false;
+        }
+        if (!proxyLoginRequestValidator.validate(player, proxyLoginRequest.verifiedPremiumUuid())) {
+            return true;
+        }
+        if (playerCache.isAuthenticated(normalizedName)) {
+            return true;
+        }
+        service.send(player, MessageKey.SESSION_RECONNECTION);
+        bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player,
+            () -> commandManager.runCommandsOnSessionLogin(player));
+        // Use forceLoginFromProxy (quiet=true, no BungeeCord redirect) so that if
+        // BungeeReceiver.performLogin() concurrently already completed the login, this
+        // call is a no-op rather than sending an "already logged in" error.
+        bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLoginFromProxy(player));
+        logger.info("The user " + player.getName() + " has been automatically logged in, "
+            + "as present in autologin queue.");
+        return true;
+    }
+
+    private void resumeSession(Player player) {
+        service.send(player, MessageKey.SESSION_RECONNECTION);
+        bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player,
+            () -> commandManager.runCommandsOnSessionLogin(player));
+        bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLogin(player));
+    }
+
+    private boolean shouldWaitForProxyPremiumLogin(Player player, boolean isAuthAvailable) {
+        if (!bungeeSender.isEnabled() || !service.getProperty(PremiumSettings.ENABLE_PREMIUM)) {
+            return false;
+        }
+        if (!isAuthAvailable) {
+            return service.getProperty(PremiumSettings.AUTO_REGISTER_PREMIUM);
+        }
+        PlayerAuth auth = database.getAuth(player.getName().toLowerCase(Locale.ROOT));
+        return auth != null && auth.isPremium();
+    }
+
+    private void waitForProxyPremiumLogin(Player player, boolean isAuthAvailable, JoinContext context) {
+        bukkitService.runTaskLater(player, () -> {
+            if (!player.isOnline() || playerCache.isAuthenticated(player.getName())) {
+                return;
+            }
+            bukkitService.runTaskOptionallyAsync(() ->
+                continueAfterProxyPremiumWait(player, isAuthAvailable, context));
+        }, PROXY_PREMIUM_LOGIN_WAIT_TICKS);
+    }
+
+    private void continueAfterProxyPremiumWait(Player player, boolean isAuthAvailable, JoinContext context) {
+        String name = player.getName().toLowerCase(Locale.ROOT);
+        if (playerCache.isAuthenticated(name)) {
+            return;
+        }
+
+        if (isAuthAvailable) {
+            if (processQueuedProxyLogin(player, name)) {
+                return;
+            }
+            if (sessionService.canResumeSession(player)) {
+                resumeSession(player);
+                return;
+            }
+        } else {
+            if (tryAutoRegisterPremium(player) || allowOptionalRegistration(player, context)) {
+                return;
+            }
+        }
+
+        continueRegularJoin(player, isAuthAvailable, context);
+    }
+
+    private boolean allowOptionalRegistration(Player player, JoinContext context) {
+        if (service.getProperty(RegistrationSettings.FORCE) || context.pendingRegistration() != null) {
+            return false;
+        }
+        bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player, () -> {
+            welcomeMessageConfiguration.sendWelcomeMessage(player);
+        });
+
+        // Skip if registration is optional
+
+        if (bungeeSender.isEnabled()) {
+            // As described at https://www.spigotmc.org/wiki/bukkit-bungee-plugin-messaging-channel/
+            // "Keep in mind that you can't send plugin messages directly after a player joins."
+            bukkitService.scheduleSyncDelayedTask(player, () ->
+                bungeeSender.sendAuthMeBungeecordMessage(player, MessageType.LOGIN), 5L);
+        }
+        return true;
+    }
+
+    private void continueRegularJoin(Player player, boolean isAuthAvailable, JoinContext context) {
+        String name = player.getName().toLowerCase(Locale.ROOT);
         // Guard: a proxy-initiated forceLoginFromProxy() may have already authenticated the player
         // (if the perform.login message arrived and was processed before this async task completes).
         // Scheduling a limbo in that case would freeze the player permanently.
@@ -269,12 +344,13 @@ public class AsynchronousJoin implements AsynchronousProcess {
         // Apply the pre-join dialog cancel kick here, after proxy/premium/session checks above have
         // had a chance to take priority and return early. If perform.login arrived in time, the
         // player was already auto-logged in above and pendingKick is silently discarded.
-        if (pendingKick != null) {
-            bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player, () -> player.kickPlayer(pendingKick));
+        if (context.pendingKick() != null) {
+            bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player, () -> player.kickPlayer(context.pendingKick()));
             return;
         }
 
-        processJoinSync(player, isAuthAvailable, pendingLoginPassword, pendingRecoveryEmail, pendingRegistration, shouldSkipPostJoinDialog, pendingForceLogin);
+        processJoinSync(player, isAuthAvailable, context.pendingLoginPassword(), context.pendingRecoveryEmail(),
+            context.pendingRegistration(), context.shouldSkipPostJoinDialog(), context.pendingForceLogin());
     }
 
     private void handlePlayerWithUnmetNameRestriction(Player player, String ip) {
@@ -554,5 +630,13 @@ public class AsynchronousJoin implements AsynchronousProcess {
             }
         }
         return count;
+    }
+
+    private record JoinContext(String pendingLoginPassword,
+                               String pendingRecoveryEmail,
+                               PreJoinDialogService.PendingRegistration pendingRegistration,
+                               boolean shouldSkipPostJoinDialog,
+                               boolean pendingForceLogin,
+                               String pendingKick) {
     }
 }
