@@ -242,6 +242,28 @@ class VelocityProxyBridgeTest {
     }
 
     @Test
+    void shouldAllowCommandsAfterExplicitAutoLoginAck() {
+        given(pluginMessageEvent.getResult()).willReturn(PluginMessageEvent.ForwardResult.forward());
+        given(pluginMessageEvent.getIdentifier()).willReturn(VelocityProxyBridge.AUTHME_CHANNEL);
+        given(pluginMessageEvent.getSource()).willReturn(sourceConnection);
+        given(pluginMessageEvent.getData()).willReturn(createAuthMePayload("perform.login.ack", "Alice"));
+        given(sourceConnection.getServer()).willReturn(authServer);
+        given(authServer.getServerInfo()).willReturn(authServerInfo);
+        given(authServerInfo.getName()).willReturn("lobby");
+        given(commandEvent.getCommandSource()).willReturn(player);
+        given(player.getUsername()).willReturn("Alice");
+        given(player.getCurrentServer()).willReturn(Optional.of(currentServer));
+        given(currentServer.getServer()).willReturn(authServer);
+
+        VelocityProxyBridge bridge = new VelocityProxyBridge(
+            proxyServer, logger, createConfiguration(), new VelocityAuthenticationStore(), null);
+        bridge.onPluginMessage(pluginMessageEvent);
+        bridge.onCommandExecute(commandEvent);
+
+        verify(commandEvent, never()).setResult(any());
+    }
+
+    @Test
     void shouldCancelPendingLoginOnImplicitAckFromNonAuthServer() {
         given(pluginMessageEvent.getResult()).willReturn(PluginMessageEvent.ForwardResult.forward());
         given(pluginMessageEvent.getIdentifier()).willReturn(VelocityProxyBridge.AUTHME_CHANNEL);

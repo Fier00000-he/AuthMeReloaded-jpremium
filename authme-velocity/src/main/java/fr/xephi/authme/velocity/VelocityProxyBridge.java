@@ -256,6 +256,7 @@ final class VelocityProxyBridge {
                 // Implicit ACK: login from non-auth server confirms perform.login was processed
                 logger.info("Auto-login confirmed for {} via login from server '{}'",
                     parsedMessage.playerName(), serverName);
+                authenticationStore.markAuthenticated(parsedMessage.playerName());
                 cancelPendingLogin(parsedMessage.playerName());
             } else {
                 logger.debug("Ignoring login from non-auth server '{}' for {} (no pending auto-login)",
@@ -268,6 +269,7 @@ final class VelocityProxyBridge {
         } else if (PERFORM_LOGIN_ACK_MESSAGE.equals(parsedMessage.typeId())) {
             logger.info("Auto-login ACK received for {} from server '{}'",
                 parsedMessage.playerName(), serverName);
+            authenticationStore.markAuthenticated(parsedMessage.playerName());
             cancelPendingLogin(parsedMessage.playerName());
         } else if (PREMIUM_SET_MESSAGE.equals(parsedMessage.typeId())) {
             premiumUsernames.add(parsedMessage.playerName());
