@@ -179,9 +179,7 @@ public class PaperDialogFlowListener implements Listener {
         }
 
         if (PaperDialogActionKeys.PRE_JOIN_REGISTER_CANCEL.equals(event.getIdentifier())) {
-            String kickMessage = commonService.getProperty(RegistrationSettings.PRE_JOIN_REGISTER_CANCEL_KICKS)
-                ? messages.retrieveSingle(playerName, MessageKey.DIALOG_REGISTER_CANCELED)
-                : null;
+            String kickMessage = messages.retrieveSingle(playerName, MessageKey.DIALOG_REGISTER_CANCELED);
             completeRegisterResponse(playerId, kickMessage);
         }
     }

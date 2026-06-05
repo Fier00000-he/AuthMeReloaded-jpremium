@@ -155,9 +155,6 @@ public class AsynchronousJoin implements AsynchronousProcess {
         String ip = PlayerUtils.getPlayerIp(player);
         UUID playerId = player.getUniqueId();
         JoinContext context = consumeJoinContext(playerId);
-        // pendingKick is applied below, after proxy/premium/session checks, which take priority:
-        // a Velocity perform.login arriving just after the player cancelled the pre-join dialog
-        // must win over the dialog cancel kick.
 
         if (!validationService.fulfillsNameRestrictions(player)) {
             handlePlayerWithUnmetNameRestriction(player, ip);
@@ -179,6 +176,9 @@ public class AsynchronousJoin implements AsynchronousProcess {
         }
 
         if (!validatePlayerCountForIp(player, ip)) {
+            return;
+        }
+        if (kickPendingPreJoinCancel(player, context)) {
             return;
         }
 
@@ -235,7 +235,16 @@ public class AsynchronousJoin implements AsynchronousProcess {
             preJoinDialogService.consumePendingRegistration(playerId),
             preJoinDialogService.consumeSkipPostJoinDialog(playerId),
             preJoinDialogService.consumePendingForceLogin(playerId),
-            preJoinDialogService.consumePendingKickMessage(playerId));
+        preJoinDialogService.consumePendingKickMessage(playerId));
+    }
+
+    private boolean kickPendingPreJoinCancel(Player player, JoinContext context) {
+        if (context.pendingKick() == null) {
+            return false;
+        }
+        bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player,
+            () -> player.kickPlayer(context.pendingKick()));
+        return true;
     }
 
     private boolean processQueuedProxyLogin(Player player, String normalizedName) {
@@ -341,11 +350,7 @@ public class AsynchronousJoin implements AsynchronousProcess {
             return;
         }
 
-        // Apply the pre-join dialog cancel kick here, after proxy/premium/session checks above have
-        // had a chance to take priority and return early. If perform.login arrived in time, the
-        // player was already auto-logged in above and pendingKick is silently discarded.
-        if (context.pendingKick() != null) {
-            bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(player, () -> player.kickPlayer(context.pendingKick()));
+        if (kickPendingPreJoinCancel(player, context)) {
             return;
         }
 

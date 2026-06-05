@@ -348,7 +348,7 @@ settings:
                 allowCloseWithEscape: false
                 # Kick players who cancel the Paper/Folia pre-join register dialog.
                 # When false, cancelling lets the player join and shows a post-join register dialog instead.
-                registerCancelKicks: false
+                registerCancelKicks: true
                 # Kick players who cancel the Paper/Folia pre-join login dialog.
                 # When false, cancelling lets the player join in limbo to use /email recover.
                 loginCancelKicks: true

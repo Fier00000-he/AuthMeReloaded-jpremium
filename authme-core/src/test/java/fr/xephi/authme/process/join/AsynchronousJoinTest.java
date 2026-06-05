@@ -226,9 +226,8 @@ public class AsynchronousJoinTest {
     }
 
     @Test
-    public void shouldAutoLoginFromProxySessionEvenIfPreJoinDialogWasCancelled() {
-        // given — proxy-authenticated player cancelled the pre-join dialog before perform.login arrived,
-        // but by the time processJoin() runs the proxy session is available; the kick must be discarded.
+    public void shouldKickPreJoinDialogCancelBeforeProxySessionLogin() {
+        // given — player explicitly cancelled the pre-join dialog; cancel wins over queued proxy login.
         Player player = mockPlayer("Bobby");
         setUpRegisteredJoin(player);
         UUID playerId = UUID.randomUUID();
@@ -241,9 +240,9 @@ public class AsynchronousJoinTest {
         // when
         asynchronousJoin.processJoin(player);
 
-        // then — proxy auto-login wins; the dialog cancel kick is discarded
-        verify(asynchronousLogin).forceLoginFromProxy(player);
-        verify(player, never()).kickPlayer(any());
+        // then
+        verify(player).kickPlayer("You have canceled the login.");
+        verify(asynchronousLogin, never()).forceLoginFromProxy(player);
         verify(limboService, never()).createLimboPlayer(eq(player), eq(true));
     }
 

@@ -142,9 +142,9 @@ public final class RegistrationSettings implements SettingsHolder {
 
     @Comment({
         "Kick players who cancel the Paper/Folia pre-join register dialog.",
-        "When false, cancelling lets the player join and shows a post-join register dialog instead."})
+        "Kept for existing configs; this fork always kicks on register cancel."})
     public static final Property<Boolean> PRE_JOIN_REGISTER_CANCEL_KICKS =
-        newProperty("settings.registration.dialog.preJoin.registerCancelKicks", false);
+        newProperty("settings.registration.dialog.preJoin.registerCancelKicks", true);
 
     @Comment({
         "Kick players who cancel the Paper/Folia pre-join login dialog.",
