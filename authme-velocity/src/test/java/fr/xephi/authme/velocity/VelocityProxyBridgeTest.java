@@ -193,7 +193,7 @@ class VelocityProxyBridgeTest {
         VelocityProxyBridge bridge = new VelocityProxyBridge(
             proxyServer, logger, new VelocityProxyConfiguration(Set.of("lobby"), false, true,
                 "Authentication required.", true, true, "limbo", true,
-                Set.of("/login", "/register"), true, "", "", false),
+                Set.of("/login", "/register"), true, "", "", false, true),
             new VelocityAuthenticationStore(), null);
         bridge.onPluginMessage(pluginMessageEvent);
 
@@ -455,7 +455,7 @@ class VelocityProxyBridgeTest {
     void shouldNotBlockCommandIfCommandsRequireAuthIsDisabled() {
         VelocityProxyConfiguration config = new VelocityProxyConfiguration(
             Set.of("lobby"), false, true, "Authentication required.", false, false, "",
-            false, Set.of("/login"), true, "", "", false);
+            false, Set.of("/login"), true, "", "", false, true);
 
         VelocityProxyBridge bridge = new VelocityProxyBridge(proxyServer, logger, config, new VelocityAuthenticationStore(), null);
         bridge.onCommandExecute(commandEvent);
@@ -527,7 +527,7 @@ class VelocityProxyBridgeTest {
     void shouldNotBlockChatIfChatRequiresAuthIsDisabled() {
         VelocityProxyConfiguration config = new VelocityProxyConfiguration(
             Set.of("lobby"), false, true, "Authentication required.", false, false, "",
-            true, Set.of("/login"), false, "", "", false);
+            true, Set.of("/login"), false, "", "", false, true);
 
         VelocityProxyBridge bridge = new VelocityProxyBridge(proxyServer, logger, config, new VelocityAuthenticationStore(), null);
         bridge.onPlayerChat(chatEvent);
@@ -565,7 +565,7 @@ class VelocityProxyBridgeTest {
         return new VelocityProxyConfiguration(Set.of("lobby"), false, true,
             "Authentication required.", true, false, "", true,
             Set.of("/login", "/register", "/l", "/reg", "/email", "/captcha", "/2fa", "/totp", "/log"),
-            true, "", "test-secret", false);
+            true, "", "test-secret", false, true);
     }
 
     private static byte[] createAuthMePayload(String typeId, String playerName) {

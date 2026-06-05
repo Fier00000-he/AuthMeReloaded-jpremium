@@ -20,7 +20,8 @@ class VelocityPremiumVerificationManagerTest {
     @Test
     void shouldForceOnlineModeForPremiumUser() {
         VelocityPremiumVerificationManager manager = new VelocityPremiumVerificationManager(
-            mock(Logger.class), "alice"::equals, normalizedName -> false, () -> false);
+            mock(Logger.class), "alice"::equals, normalizedName -> false, () -> false, () -> true,
+            normalizedName -> false);
 
         PreLoginEvent event = new PreLoginEvent(mock(InboundConnection.class), "Alice", null);
         manager.onPreLogin(event);
@@ -32,7 +33,8 @@ class VelocityPremiumVerificationManagerTest {
     @Test
     void shouldRewriteVerifiedProfileToOfflineUuid() {
         VelocityPremiumVerificationManager manager = new VelocityPremiumVerificationManager(
-            mock(Logger.class), "alice"::equals, normalizedName -> false, () -> true);
+            mock(Logger.class), "alice"::equals, normalizedName -> false, () -> true, () -> true,
+            normalizedName -> false);
         UUID mojangUuid = UUID.fromString("8d6d0684-d8b4-4d40-8d2d-0dd4df5555c8");
         GameProfile originalProfile = new GameProfile(mojangUuid, "Alice", List.of());
         GameProfileRequestEvent event = new GameProfileRequestEvent(
@@ -47,7 +49,8 @@ class VelocityPremiumVerificationManagerTest {
     @Test
     void shouldIgnoreOfflineModeProfileRequest() {
         VelocityPremiumVerificationManager manager = new VelocityPremiumVerificationManager(
-            mock(Logger.class), "alice"::equals, normalizedName -> false, () -> true);
+            mock(Logger.class), "alice"::equals, normalizedName -> false, () -> true, () -> true,
+            normalizedName -> false);
         UUID mojangUuid = UUID.fromString("8d6d0684-d8b4-4d40-8d2d-0dd4df5555c8");
         GameProfile originalProfile = new GameProfile(mojangUuid, "Alice", List.of());
         GameProfileRequestEvent event = new GameProfileRequestEvent(
@@ -62,7 +65,8 @@ class VelocityPremiumVerificationManagerTest {
     @Test
     void shouldKeepMojangUuidWhenOfflineCompatibilityDisabled() {
         VelocityPremiumVerificationManager manager = new VelocityPremiumVerificationManager(
-            mock(Logger.class), "alice"::equals, normalizedName -> false, () -> false);
+            mock(Logger.class), "alice"::equals, normalizedName -> false, () -> false, () -> true,
+            normalizedName -> false);
         UUID mojangUuid = UUID.fromString("8d6d0684-d8b4-4d40-8d2d-0dd4df5555c8");
         GameProfile originalProfile = new GameProfile(mojangUuid, "Alice", List.of());
         GameProfileRequestEvent event = new GameProfileRequestEvent(
@@ -72,5 +76,30 @@ class VelocityPremiumVerificationManagerTest {
 
         assertEquals(mojangUuid, event.getGameProfile().getId());
         assertEquals(mojangUuid, manager.getVerifiedPremiumUuid("alice"));
+    }
+
+    @Test
+    void shouldForceOnlineModeForUnknownMojangProfile() {
+        VelocityPremiumVerificationManager manager = new VelocityPremiumVerificationManager(
+            mock(Logger.class), normalizedName -> false, normalizedName -> false, () -> false, () -> true,
+            "alice"::equals);
+
+        PreLoginEvent event = new PreLoginEvent(mock(InboundConnection.class), "Alice", null);
+        manager.onPreLogin(event);
+
+        assertEquals(PreLoginEvent.PreLoginComponentResult.forceOnlineMode().toString(),
+            event.getResult().toString());
+    }
+
+    @Test
+    void shouldNotForceOnlineModeForUnknownNonMojangProfile() {
+        VelocityPremiumVerificationManager manager = new VelocityPremiumVerificationManager(
+            mock(Logger.class), normalizedName -> false, normalizedName -> false, () -> false, () -> true,
+            normalizedName -> false);
+
+        PreLoginEvent event = new PreLoginEvent(mock(InboundConnection.class), "Alice", null);
+        manager.onPreLogin(event);
+
+        assertEquals(PreLoginEvent.PreLoginComponentResult.allowed().toString(), event.getResult().toString());
     }
 }

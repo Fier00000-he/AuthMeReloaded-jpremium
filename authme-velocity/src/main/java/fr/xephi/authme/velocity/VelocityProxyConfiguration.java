@@ -26,6 +26,7 @@ final class VelocityProxyConfiguration {
     private final String loginServer;
     private final String sharedSecret;
     private final boolean keepOfflineUuidCompatibility;
+    private final boolean verifyUnknownPremiumPlayers;
 
     VelocityProxyConfiguration(Set<String> authServers, boolean allServersAreAuthServers,
                                boolean serverSwitchRequiresAuth, String serverSwitchKickMessage,
@@ -33,7 +34,8 @@ final class VelocityProxyConfiguration {
                                String sendOnLogoutTarget, boolean commandsRequireAuth,
                                Set<String> commandWhitelist, boolean chatRequiresAuth,
                                String loginServer, String sharedSecret,
-                               boolean keepOfflineUuidCompatibility) {
+                               boolean keepOfflineUuidCompatibility,
+                               boolean verifyUnknownPremiumPlayers) {
         this.authServers = authServers;
         this.allServersAreAuthServers = allServersAreAuthServers;
         this.serverSwitchRequiresAuth = serverSwitchRequiresAuth;
@@ -47,6 +49,7 @@ final class VelocityProxyConfiguration {
         this.loginServer = normalizeServerName(loginServer);
         this.sharedSecret = sharedSecret;
         this.keepOfflineUuidCompatibility = keepOfflineUuidCompatibility;
+        this.verifyUnknownPremiumPlayers = verifyUnknownPremiumPlayers;
     }
 
     static VelocityProxyConfiguration from(SettingsManager settingsManager) {
@@ -63,7 +66,8 @@ final class VelocityProxyConfiguration {
             settingsManager.getProperty(VelocityConfigProperties.CHAT_REQUIRES_AUTH),
             settingsManager.getProperty(VelocityConfigProperties.LOGIN_SERVER),
             settingsManager.getProperty(VelocityConfigProperties.PROXY_SHARED_SECRET),
-            settingsManager.getProperty(VelocityConfigProperties.PREMIUM_KEEP_OFFLINE_UUID_COMPATIBILITY));
+            settingsManager.getProperty(VelocityConfigProperties.PREMIUM_KEEP_OFFLINE_UUID_COMPATIBILITY),
+            settingsManager.getProperty(VelocityConfigProperties.PREMIUM_VERIFY_UNKNOWN_PLAYERS));
     }
 
     Set<String> authServers() {
@@ -112,6 +116,10 @@ final class VelocityProxyConfiguration {
 
     boolean keepOfflineUuidCompatibility() {
         return keepOfflineUuidCompatibility;
+    }
+
+    boolean verifyUnknownPremiumPlayers() {
+        return verifyUnknownPremiumPlayers;
     }
 
     boolean isAuthServer(RegisteredServer server) {

@@ -32,6 +32,7 @@ class VelocityConfigManagerTest {
         assertTrue(configManager.getConfiguration().chatRequiresAuth());
         assertFalse(configManager.getConfiguration().sharedSecret().isEmpty());
         assertFalse(configManager.getConfiguration().keepOfflineUuidCompatibility());
+        assertTrue(configManager.getConfiguration().verifyUnknownPremiumPlayers());
     }
 
     @Test
@@ -58,6 +59,7 @@ sendOnLogout: true
 unloggedUserServer: LiMbO
 premium:
   keepOfflineUuidCompatibility: true
+  verifyUnknownPlayers: false
 """);
 
         VelocityProxyConfiguration configuration = new VelocityConfigManager(tempDirectory).getConfiguration();
@@ -70,6 +72,7 @@ premium:
         assertTrue(configuration.sendOnLogoutEnabled());
         assertEquals("limbo", configuration.sendOnLogoutTarget());
         assertTrue(configuration.keepOfflineUuidCompatibility());
+        assertFalse(configuration.verifyUnknownPremiumPlayers());
     }
 
     @Test

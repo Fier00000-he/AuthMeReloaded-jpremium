@@ -6,7 +6,9 @@ import com.velocitypowered.api.util.UuidUtils;
 import org.slf4j.Logger;
 
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
@@ -16,17 +18,33 @@ public final class VelocityPremiumVerificationManager {
     private final Predicate<String> requiresVerification;
     private final Predicate<String> isPendingVerification;
     private final BooleanSupplier keepOfflineUuidCompatibility;
+    private final BooleanSupplier verifyUnknownPremiumPlayers;
+    private final Predicate<String> hasMojangProfile;
+    private final Set<String> onlineModeNames = ConcurrentHashMap.newKeySet();
     private final ProxyPremiumLoginVerifier loginVerifier;
     private boolean registered;
 
     public VelocityPremiumVerificationManager(Logger logger,
                                               Predicate<String> requiresVerification,
                                               Predicate<String> isPendingVerification,
-                                              BooleanSupplier keepOfflineUuidCompatibility) {
+                                              BooleanSupplier keepOfflineUuidCompatibility,
+                                              BooleanSupplier verifyUnknownPremiumPlayers) {
+        this(logger, requiresVerification, isPendingVerification, keepOfflineUuidCompatibility,
+            verifyUnknownPremiumPlayers, new MojangProfileLookup(logger));
+    }
+
+    VelocityPremiumVerificationManager(Logger logger,
+                                       Predicate<String> requiresVerification,
+                                       Predicate<String> isPendingVerification,
+                                       BooleanSupplier keepOfflineUuidCompatibility,
+                                       BooleanSupplier verifyUnknownPremiumPlayers,
+                                       Predicate<String> hasMojangProfile) {
         this.logger = logger;
         this.requiresVerification = requiresVerification;
         this.isPendingVerification = isPendingVerification;
         this.keepOfflineUuidCompatibility = keepOfflineUuidCompatibility;
+        this.verifyUnknownPremiumPlayers = verifyUnknownPremiumPlayers;
+        this.hasMojangProfile = hasMojangProfile;
         this.loginVerifier = new ProxyPremiumLoginVerifier("authme-velocity-premium",
             message -> this.logger.warn(message));
     }
@@ -41,14 +59,18 @@ public final class VelocityPremiumVerificationManager {
 
     public void onPreLogin(PreLoginEvent event) {
         String normalizedName = normalize(event.getUsername());
-        if (requiresVerification.test(normalizedName)) {
+        if (shouldForceOnlineMode(normalizedName)) {
+            onlineModeNames.add(normalizedName);
             event.setResult(PreLoginEvent.PreLoginComponentResult.forceOnlineMode());
+        } else {
+            onlineModeNames.remove(normalizedName);
         }
     }
 
     public void onGameProfileRequest(GameProfileRequestEvent event) {
         String normalizedName = normalize(event.getUsername());
-        if (!requiresVerification.test(normalizedName) || !event.isOnlineMode()) {
+        if ((!onlineModeNames.contains(normalizedName) && !requiresVerification.test(normalizedName))
+                || !event.isOnlineMode()) {
             return;
         }
 
@@ -65,12 +87,20 @@ public final class VelocityPremiumVerificationManager {
         }
     }
 
+    private boolean shouldForceOnlineMode(String normalizedName) {
+        if (requiresVerification.test(normalizedName)) {
+            return true;
+        }
+        return verifyUnknownPremiumPlayers.getAsBoolean() && hasMojangProfile.test(normalizedName);
+    }
+
     public UUID getVerifiedPremiumUuid(String normalizedName) {
         return loginVerifier.getVerifiedUuid(normalizedName);
     }
 
     public void clearVerifiedPremium(String normalizedName) {
         loginVerifier.clearVerified(normalizedName);
+        onlineModeNames.remove(normalizedName);
     }
 
     public void shutdown() {
@@ -78,6 +108,7 @@ public final class VelocityPremiumVerificationManager {
             return;
         }
         registered = false;
+        onlineModeNames.clear();
         loginVerifier.shutdown();
     }
 

@@ -75,6 +75,14 @@ public final class VelocityConfigProperties implements SettingsHolder {
     public static final Property<Boolean> PREMIUM_KEEP_OFFLINE_UUID_COMPATIBILITY =
         newProperty("premium.keepOfflineUuidCompatibility", false);
 
+    @Comment({
+        "Check unknown player names against Mojang and force online-mode when the name exists.",
+        "This lets new premium players be auto-registered by the backend without /register.",
+        "Cracked players using an existing premium name will fail Mojang authentication."
+    })
+    public static final Property<Boolean> PREMIUM_VERIFY_UNKNOWN_PLAYERS =
+        newProperty("premium.verifyUnknownPlayers", true);
+
     private VelocityConfigProperties() {
     }
 }
